@@ -1,0 +1,67 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build library and example tool
+        run: make
+
+      - name: Create test files
+        run: |
+          # Text file
+          echo "Hello, world!" > test_text.txt
+          # Binary file with a null byte
+          printf 'Hello\x00World' > test_binary.bin
+
+      - name: Test text detection
+        run: |
+          output=$(./libftext test_text.txt)
+          if [ "$output" != "text" ]; then
+            echo "Expected 'text' but got '$output'"
+            exit 1
+          fi
+
+      - name: Test binary detection
+        run: |
+          output=$(./libftext test_binary.bin)
+          if [ "$output" != "binary" ]; then
+            echo "Expected 'binary' but got '$output'"
+            exit 1
+          fi
+
+      - name: Test missing file (should fail)
+        run: |
+          set +e
+          ./libftext nonexistent.txt > /dev/null 2>&1
+          exit_code=$?
+          set -e
+          if [ $exit_code -eq 0 ]; then
+            echo "Expected non-zero exit code for missing file"
+            exit 1
+          fi
+
+      - name: Test version output
+        run: |
+          # Running without arguments prints usage and version
+          ./libftext 2>&1 | grep -q "Version: 1.0.0" || {
+            echo "Version string not found in output"
+            exit 1
+          }
+
+      - name: Clean up
+        run: make clean

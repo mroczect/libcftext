@@ -1,0 +1,236 @@
+LIBCFTEXT
+=========
+
+A lightweight, pure C library to determine whether a file contains text or
+binary data.
+
+OVERVIEW
+--------
+
+libcftext provides a single straightforward function, is_text_file(), that
+reads the raw bytes of a file and applies a heuristic based on:
+
+  - Absence of null bytes (0x00)
+  - Proportion of non-printable characters
+
+The library is written in standard C (C89/C99), has no external dependencies,
+and can be compiled on any platform with a C compiler.  It exposes a minimal
+public API that includes error reporting and version information.
+
+FEATURES
+--------
+
+  * Single-function detection – call is_text_file() and get a clear answer.
+  * No dependencies – relies only on the C standard library.
+  * Portable – works on Linux, macOS, Windows, and other systems.
+  * Binary safe – uses "rb" mode to avoid text-mode translations.
+  * Configurable – the detection threshold can be changed via a build-time
+    macro.
+  * Informative errors – error codes and human-readable strings are provided.
+  * Versioning – compile-time version macros and a runtime version function.
+  * C++ compatible – wrapped in extern "C" for seamless use in C++ projects.
+
+GETTING STARTED
+---------------
+
+Prerequisites:
+  - A C compiler (GCC, Clang, MSVC, etc.)
+  - GNU Make (or compatible) for the provided Makefile
+  - Standard POSIX tools (ar, install) for building and installing
+
+Building from Source:
+
+  git clone https://github.com/mroczect/libcftext.git
+  cd libcftext
+  make
+
+This produces:
+  - libcftext.a   – static library
+  - libftext      – example command-line tool
+
+Object files are placed in the build/ directory and are ignored by Git.
+
+Available Make targets:
+
+  all       Build the library and the example tool (default)
+  clean     Remove all build artifacts
+  install   Install the library and header to /usr/local
+  uninstall Remove installed files from /usr/local
+
+Override the compiler or flags:
+
+  make CC=clang CFLAGS="-O3 -march=native"
+
+The install target respects DESTDIR for staged installations:
+
+  make DESTDIR=/tmp/staging install
+
+Linking Against the Library:
+
+After building, include the header and link with -lcftext.
+
+  #include "libcftext.h"
+
+  int main(void) {
+      int result = is_text_file("example.txt");
+      if (result == 1) {
+          /* text */
+      }
+      return 0;
+  }
+
+Compile and link:
+
+  gcc -I./include myapp.c -L. -lcftext -o myapp
+
+USAGE
+-----
+
+Command-Line Tool:
+
+The included example program (libftext) can be used to test files directly.
+
+  ./libftext document.txt
+
+Output:
+  text
+
+If the file is binary:
+  binary
+
+On error:
+  Error: Cannot open file
+
+API REFERENCE
+-------------
+
+is_text_file()
+
+  int is_text_file(const char *filename);
+
+  Determines whether a file is text or binary.
+
+  Parameters:
+    filename – null-terminated path to the file. Must not be NULL.
+
+  Returns:
+    1  – file appears to be text (or is empty)
+    0  – file appears to be binary
+    -1 – an error occurred; retrieve the error with libcftext_get_error()
+
+  Algorithm details:
+    1. The file is opened in binary mode to avoid any platform-specific
+       translations.
+    2. Blocks of 4096 bytes are read sequentially.
+    3. If a null byte (0x00) is encountered, the file is immediately
+       classified as binary.
+    4. Each byte is checked against a set of acceptable characters:
+       printable ASCII (32-126), tab, newline, carriage return, and all
+       high-bytes (>=128, which are considered part of multi-byte encodings
+       like UTF-8).
+    5. After reading, the percentage of bytes that are not in the acceptable
+       set is calculated. If it exceeds 10%, the file is classified as
+       binary. Otherwise, it is considered text.
+    6. An empty file (0 bytes) is always classified as text.
+
+  The 10% threshold can be adjusted by changing the MAX_NONPRINTABLE_PERCENT
+  macro in src/core.c and recompiling.
+
+  Thread safety: This function is not thread-safe because it modifies a
+  global error state. In multithreaded applications, serialise access to
+  is_text_file() and the related error functions, or ensure only one thread
+  uses the library at a time.
+
+Error Handling Functions
+
+  int libcftext_get_error(void);
+  void libcftext_set_error(int err);      /* internal use */
+  const char *libcftext_strerror(int err);
+
+  When is_text_file() returns -1, call libcftext_get_error() to obtain an
+  error code, and libcftext_strerror() to get a human-readable description.
+
+  Error codes:
+    LIBCFTEXT_OK          (0)  No error
+    LIBCFTEXT_ERR_NULL_PTR(1)  Filename argument was NULL
+    LIBCFTEXT_ERR_OPEN    (2)  File could not be opened
+    LIBCFTEXT_ERR_READ    (3)  Read error while processing file
+    LIBCFTEXT_ERR_UNKNOWN (99) Unknown error (reserved)
+
+  Example:
+    int res = is_text_file("nonexistent.txt");
+    if (res == -1) {
+        int err = libcftext_get_error();
+        fprintf(stderr, "Failed: %s\n", libcftext_strerror(err));
+    }
+
+  Note: libcftext_set_error() is used internally by the library to record
+  the cause of an error. User code should not call it directly.
+
+Version Information
+
+  const char *libcftext_version(void);
+
+  Returns a static string like "1.0.0".
+
+  Compile-time version macros are also available in libcftext.h:
+    LIBCFTEXT_VERSION_MAJOR
+    LIBCFTEXT_VERSION_MINOR
+    LIBCFTEXT_VERSION_PATCH
+    LIBCFTEXT_VERSION       (full string)
+
+PROJECT STRUCTURE
+-----------------
+
+  libcftext/
+  ├── include/
+  │   └── libcftext.h      # Public header
+  ├── src/
+  │   ├── core.c           # Detection logic
+  │   ├── error.c          # Error state and messages
+  │   └── version.c        # Version function
+  ├── main.c               # Command-line example
+  ├── Makefile             # Build automation
+  ├── .gitignore
+  └── README
+
+VERSIONING
+----------
+
+This project follows Semantic Versioning (https://semver.org). The current
+version is 1.0.0.
+
+CONTRIBUTING
+------------
+
+Contributions are welcome. Please open an issue or submit a pull request on
+GitHub. Ensure that:
+
+  - Code compiles cleanly with -Wall -Wextra.
+  - Existing functionality is not broken.
+  - New tests are added if applicable.
+
+LICENSE
+-------
+
+libcftext
+
+Copyright (C) 2026  mroczect
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+CONTACT
+-------
+
+Repository: https://github.com/mroczect/libcftext
