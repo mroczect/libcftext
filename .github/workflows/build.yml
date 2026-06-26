@@ -177,8 +177,8 @@ jobs:
         with:
           # Attach every file inside the per-OS directories.
           files: |
-            libcftext-ubuntu-latest/*
-            libcftext-macos-latest/*
+            libcftext-ubuntu-latest/artifact/*
+            libcftext-macos-latest/artifact/*
           # A simple descriptive body for the release notes.
           body: |
             ## LibCFText Release ${{ github.ref_name }}
