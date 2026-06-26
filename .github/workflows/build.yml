@@ -1,33 +1,77 @@
+# -------------------------------------------------------------------
+# GitHub Actions workflow for the libcftext library.
+#
+# This workflow builds the static library and the command-line tool
+# on every push or pull request to the master branch.  It also runs
+# a set of simple smoke tests to verify that the detection logic
+# works correctly.
+#
+# When a version tag (e.g. v1.0.1) is pushed, a release job is
+# triggered that collects the build artifacts from all platforms
+# and publishes them as a GitHub Release, making pre-built binaries
+# easily available.
+# -------------------------------------------------------------------
+
 name: Build and Test
 
+# --- Triggers ---
 on:
   push:
-    branches: [master]
+    branches: [master]        # Run on every push to master
+    tags:
+      - 'v*'                  # Also trigger on version tags for releases
   pull_request:
-    branches: [master]
+    branches: [master]        # Run on every pull request targeting master
 
 jobs:
+  # ===================================================================
+  # Build and test on a matrix of operating systems.
+  # Currently targets Ubuntu (Linux) and macOS.
+  # Windows can be added later using MSYS2/MinGW if needed.
+  # ===================================================================
   build:
     strategy:
+      # Fail fast: if one OS fails, the whole job fails quickly,
+      # saving CI minutes.
+      fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest]
 
+    # Use the OS specified by the matrix variable.
     runs-on: ${{ matrix.os }}
 
+    # Define an environment variable that creates a unique artifact
+    # name for each OS (e.g. "libcftext-ubuntu-latest").
+    env:
+      ARTIFACT_NAME: libcftext-${{ matrix.os }}
+
     steps:
+      # ---------------------------------------------------------------
+      # Step 1: Check out the repository code.
+      # ---------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ---------------------------------------------------------------
+      # Step 2: Build the library and the example tool using Make.
+      # ---------------------------------------------------------------
       - name: Build library and example tool
         run: make
 
+      # ---------------------------------------------------------------
+      # Step 3: Create small test files on the fly:
+      #   - test_text.txt : normal text (no null bytes)
+      #   - test_binary.bin : a binary file containing a null byte
+      # ---------------------------------------------------------------
       - name: Create test files
         run: |
-          # Text file
           echo "Hello, world!" > test_text.txt
-          # Binary file with a null byte
+          # Using printf to embed a literal null byte
           printf 'Hello\x00World' > test_binary.bin
 
+      # ---------------------------------------------------------------
+      # Step 4: Verify that the tool returns "text" for a text file.
+      # ---------------------------------------------------------------
       - name: Test text detection
         run: |
           output=$(./libftext test_text.txt)
@@ -36,6 +80,9 @@ jobs:
             exit 1
           fi
 
+      # ---------------------------------------------------------------
+      # Step 5: Verify that the tool returns "binary" for a binary file.
+      # ---------------------------------------------------------------
       - name: Test binary detection
         run: |
           output=$(./libftext test_binary.bin)
@@ -44,6 +91,11 @@ jobs:
             exit 1
           fi
 
+      # ---------------------------------------------------------------
+      # Step 6: Check that the tool fails (non-zero exit code) when
+      # given a non-existent file.  We temporarily disable "set -e"
+      # to capture the exit code without aborting the step.
+      # ---------------------------------------------------------------
       - name: Test missing file (should fail)
         run: |
           set +e
@@ -55,13 +107,84 @@ jobs:
             exit 1
           fi
 
+      # ---------------------------------------------------------------
+      # Step 7: Run the tool with no arguments; it should print the
+      # version string to stderr (along with usage).
+      # ---------------------------------------------------------------
       - name: Test version output
         run: |
-          # Running without arguments prints usage and version
-          ./libftext 2>&1 | grep -q "Version: 1.0.0" || {
+          # Redirect stderr to stdout because the message goes to stderr
+          ./libftext 2>&1 | grep -q "Version: 1.0.1" || {
             echo "Version string not found in output"
             exit 1
           }
 
+      # ---------------------------------------------------------------
+      # Step 8: Prepare a folder with the build outputs that will be
+      # uploaded as an artifact.  This makes the library and tool
+      # available for download from the Actions page.
+      # ---------------------------------------------------------------
+      - name: Prepare artifact folder
+        run: |
+          mkdir -p artifact
+          cp libcftext.a artifact/
+          cp libftext artifact/
+
+      # ---------------------------------------------------------------
+      # Step 9: Upload the artifact using the unique name per OS.
+      # ---------------------------------------------------------------
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: artifact/
+
+      # ---------------------------------------------------------------
+      # Step 10: Run "make clean" to verify that the clean target works.
+      # ---------------------------------------------------------------
       - name: Clean up
         run: make clean
+
+  # ===================================================================
+  # Release job – only runs when a version tag (e.g. v1.0.1) is pushed.
+  # It collects the artifacts from all build jobs and attaches them
+  # to a new GitHub Release.
+  # ===================================================================
+  release:
+    # Trigger condition: the event is a push of a tag that starts with 'v'
+    if: startsWith(github.ref, 'refs/tags/v')
+    # The release job depends on the build job completing successfully.
+    needs: build
+    # This job can run on a single OS since it only downloads artifacts.
+    runs-on: ubuntu-latest
+    steps:
+      # ---------------------------------------------------------------
+      # Download all artifacts produced by the "build" job.
+      # After this, the workspace will contain directories named after
+      # each artifact (e.g. libcftext-ubuntu-latest, libcftext-macos-latest).
+      # ---------------------------------------------------------------
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      # ---------------------------------------------------------------
+      # Create the GitHub Release and upload the files from the
+      # downloaded artifact folders.
+      # ---------------------------------------------------------------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          # Attach every file inside the per-OS directories.
+          files: |
+            libcftext-ubuntu-latest/*
+            libcftext-macos-latest/*
+          # A simple descriptive body for the release notes.
+          body: |
+            ## LibCFText Release ${{ github.ref_name }}
+
+            Pre-built static library and command-line tool for:
+            - Linux (x86_64)
+            - macOS (x86_64 / arm64)
+
+            See the README for usage instructions.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
