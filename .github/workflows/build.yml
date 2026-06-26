@@ -74,7 +74,7 @@ jobs:
       - name: Test version output
         run: |
           # Make sure this version matches the one in the source code
-          ./libftext 2>&1 | grep -q "Version: 1.0.6" || {
+          ./libftext 2>&1 | grep -q "Version: 1.0.7" || {
             echo "ERROR: Version string not found in output"
             exit 1
           }
