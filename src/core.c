@@ -6,7 +6,7 @@
  * and determines whether its content is text or binary. The heuristic is based
  * on the presence of null bytes and the proportion of non-printable characters.
  *
- * @version 1.0.1
+ * @version 1.0.2
  */
 
 #include <stdio.h>      /* FILE, fopen, fclose, fread, ferror, NULL */

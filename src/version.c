@@ -12,7 +12,7 @@
  * public header (which already contains the identical version information
  * in macro form for compile‑time checks).
  *
- * @version 1.0.1
+ * @version 1.0.2
  */
 
 #include "../include/libcftext.h"
@@ -24,7 +24,7 @@
 /**
  * @brief Get the library version as a static string.
  *
- * The version string has the format `"MAJOR.MINOR.PATCH"`, e.g. `"1.0.1"`.
+ * The version string has the format `"MAJOR.MINOR.PATCH"`, e.g. `"1.0.2"`.
  *
  * Because the returned string is statically allocated, it remains valid for
  * the entire lifetime of the program and must not be freed or modified by
@@ -43,5 +43,5 @@
  */
 const char *libcftext_version(void)
 {
-    return "1.0.1";
+    return "1.0.2";
 }

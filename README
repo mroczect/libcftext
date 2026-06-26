@@ -171,7 +171,7 @@ Version Information
 
   const char *libcftext_version(void);
 
-  Returns a static string like "1.0.1".
+  Returns a static string like "1.0.2".
 
   Compile-time version macros are also available in libcftext.h:
     LIBCFTEXT_VERSION_MAJOR
@@ -198,7 +198,7 @@ VERSIONING
 ----------
 
 This project follows Semantic Versioning (https://semver.org). The current
-version is 1.0.1.
+version is 1.0.2.
 
 CONTRIBUTING
 ------------
