@@ -157,6 +157,8 @@ jobs:
     needs: build
     # This job can run on a single OS since it only downloads artifacts.
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       # ---------------------------------------------------------------
       # Download all artifacts produced by the "build" job.
