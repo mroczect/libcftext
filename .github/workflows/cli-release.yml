@@ -1,29 +1,12 @@
-# -------------------------------------------------------------------
-# Standalone CLI release workflow for libcftext.
-#
-# This workflow builds the command-line tool `libftext` for Linux
-# and macOS, then creates a dedicated GitHub Release containing:
-#   - Per-platform binaries (tar.gz)
-#   - A universal installer script (installer.sh)
-#
-# The installer automatically detects OS/arch, downloads the correct
-# binary from the release, and installs it to /usr/local/bin (or a
-# custom directory).
-#
-# Triggered manually or when a tag like "cli-v*" is pushed.
-# -------------------------------------------------------------------
 name: CLI Release
 
 on:
-  workflow_dispatch: # Manual trigger from Actions tab
+  workflow_dispatch:
   push:
     tags:
-      - "cli-v*" # e.g. cli-v1.0.5
+      - "cli-v*"
 
 jobs:
-  # ------------------------------------------------------------------
-  # Build CLI binary for each platform
-  # ------------------------------------------------------------------
   build-cli:
     strategy:
       fail-fast: true
@@ -39,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build CLI tool
-        run: make # Builds both library and binary; we only need libftext
+        run: make
 
       - name: Smoke test the binary
         run: |
@@ -54,18 +37,15 @@ jobs:
         run: |
           mkdir -p upload
           cp libftext upload/
-          # Create a tar.gz archive (preserves permissions)
-          tar -czf libftext.tar.gz -C upload libftext
+          # Give the archive a unique name per OS
+          tar -czf libftext-${{ matrix.os }}.tar.gz -C upload libftext
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: libftext.tar.gz
+          path: libftext-${{ matrix.os }}.tar.gz
 
-  # ------------------------------------------------------------------
-  # Generate the universal installer script
-  # ------------------------------------------------------------------
   generate-installer:
     needs: build-cli
     runs-on: ubuntu-latest
@@ -76,16 +56,7 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
 
-          # ------------------------------------------------------------
-          # libftext CLI installer
-          # This script downloads the correct binary from the GitHub
-          # release and installs it to the specified directory.
-          # ------------------------------------------------------------
-
-          # Default installation directory
           INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-
-          # Determine OS and architecture
           OS="$(uname -s)"
           ARCH="$(uname -m)"
 
@@ -98,25 +69,19 @@ jobs:
                   ;;
           esac
 
-          # The release tag is injected by the CI workflow
           RELEASE_TAG="__RELEASE_TAG__"
           BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
-
-          # File to download
           FILENAME="libftext-${PLATFORM}.tar.gz"
 
           echo "Downloading $FILENAME from $BASE_URL ..."
           curl -fsSL "${BASE_URL}/${FILENAME}" -o "/tmp/${FILENAME}"
 
-          # Extract
           echo "Extracting..."
           tar -xzf "/tmp/${FILENAME}" -C /tmp/
 
-          # Install
           echo "Installing libftext to ${INSTALL_DIR} ..."
           sudo install -m 755 /tmp/libftext "${INSTALL_DIR}/libftext"
 
-          # Verify
           if command -v libftext >/dev/null 2>&1; then
               echo "libftext installed successfully!"
               libftext --version 2>&1 || true
@@ -138,9 +103,6 @@ jobs:
           name: installer
           path: installer.sh
 
-  # ------------------------------------------------------------------
-  # Create GitHub Release and attach binaries + installer
-  # ------------------------------------------------------------------
   release:
     if: startsWith(github.ref, 'refs/tags/cli-v') || github.event_name == 'workflow_dispatch'
     needs: [build-cli, generate-installer]
@@ -171,5 +133,3 @@ jobs:
             ### Quick install
             ```bash
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/installer.sh | bash
-            ```
-            Or download the script and run it manually.
