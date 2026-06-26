@@ -13,7 +13,7 @@ name: Build, Test, and Release
 on:
   push:
     branches: [master]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
     branches: [master]
 
@@ -101,50 +101,38 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write                # Required to create releases
-
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
-      # ------------------------------------------------------------------
-      # Debug: Show directory structure (helps if something goes wrong)
-      # ------------------------------------------------------------------
       - name: Display artifact structure
         run: |
           echo "Downloaded artifacts:"
           ls -R
 
-      # ------------------------------------------------------------------
-      # Generate SHA256 checksums for each artifact folder
-      # ------------------------------------------------------------------
       - name: Generate SHA256 checksums
         run: |
           for dir in libcftext-ubuntu-latest libcftext-macos-latest; do
-            if [ -d "$dir/artifact" ]; then
+            if [ -d "$dir" ]; then
               echo "Generating checksums for $dir..."
-              cd "$dir/artifact"
-              # Create SHA256SUMS file with checksums of all files
+              cd "$dir"
               sha256sum * > SHA256SUMS
-              # Show the generated checksums for verification
               cat SHA256SUMS
-              cd -
+              cd ..
             else
-              echo "WARNING: $dir/artifact not found, skipping."
+              echo "WARNING: $dir not found, skipping."
             fi
           done
 
-      # ------------------------------------------------------------------
-      # Create GitHub Release and upload all assets + checksums
-      # ------------------------------------------------------------------
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: |
-            libcftext-ubuntu-latest/artifact/*
-            libcftext-macos-latest/artifact/*
+            libcftext-ubuntu-latest/*
+            libcftext-macos-latest/*
           body: |
             ## LibCFText Release ${{ github.ref_name }}
 
@@ -153,5 +141,4 @@ jobs:
             - macOS (x86_64 / arm64)
 
             ### SHA256 Checksums
-            See the `SHA256SUMS` file inside each platform folder
-            for integrity verification.
+            See `SHA256SUMS` inside each platform folder.
