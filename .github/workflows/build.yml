@@ -3,9 +3,11 @@
 #
 # Build + Test on every push/PR to master.
 # On version tags (v*), a release is created with:
-#   - Pre-built static library (libcftext.a)
-#   - Command-line tool (libftext)
-#   - A single SHA256SUMS file covering all artifacts
+#   - Per-platform ZIP archives containing libcftext.a and libftext
+#   - A single SHA256SUMS file for integrity verification
+#
+# The workflow is stable and handles duplicate file names by
+# packaging each OS artifact into a uniquely named ZIP.
 # -------------------------------------------------------------------
 name: Build, Test, and Release
 
@@ -71,7 +73,8 @@ jobs:
 
       - name: Test version output
         run: |
-          ./libftext 2>&1 | grep -q "Version: 1.0.3" || {
+          # Make sure this version matches the one in the source code
+          ./libftext 2>&1 | grep -q "Version: 1.0.4" || {
             echo "ERROR: Version string not found in output"
             exit 1
           }
@@ -102,44 +105,69 @@ jobs:
     permissions:
       contents: write
     steps:
+      # ---------------------------------------------------------------
+      # Download the artifacts from the build job.
+      # They will be placed in directories named after the artifact.
+      # ---------------------------------------------------------------
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
+      # ---------------------------------------------------------------
+      # Show the directory tree for debugging purposes.
+      # ---------------------------------------------------------------
       - name: Display artifact structure
         run: |
           echo "Downloaded artifacts:"
           ls -R
 
-      - name: Generate combined SHA256 checksums
+      # ---------------------------------------------------------------
+      # Package each OS folder into a separate ZIP file.
+      # This avoids duplicate file names when uploading to the release.
+      # ---------------------------------------------------------------
+      - name: Package each platform into a ZIP archive
         run: |
-          echo "Generating SHA256 checksums for all release assets..."
-          rm -f SHA256SUMS
           for dir in libcftext-ubuntu-latest libcftext-macos-latest; do
             if [ -d "$dir" ]; then
-              # Append checksums of files inside the directory to the combined file
-              (cd "$dir" && sha256sum * >> ../SHA256SUMS)
+              echo "Packaging $dir..."
+              (cd "$dir" && zip -r "../${dir}.zip" .)
             else
               echo "WARNING: $dir not found, skipping."
+            fi
+          done
+          echo "Created ZIP archives:"
+          ls -lh *.zip
+
+      # ---------------------------------------------------------------
+      # Generate a single SHA256SUMS file containing checksums
+      # of all ZIP archives (not the individual files).
+      # ---------------------------------------------------------------
+      - name: Generate SHA256 checksums for all ZIP archives
+        run: |
+          rm -f SHA256SUMS
+          for zipfile in libcftext-*.zip; do
+            if [ -f "$zipfile" ]; then
+              sha256sum "$zipfile" >> SHA256SUMS
             fi
           done
           echo "Checksums generated:"
           cat SHA256SUMS
 
+      # ---------------------------------------------------------------
+      # Create the GitHub Release and upload the ZIPs + SHA256SUMS.
+      # Using ncipollo/release-action for better reliability.
+      # ---------------------------------------------------------------
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: ncipollo/release-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: |
-            libcftext-ubuntu-latest/*
-            libcftext-macos-latest/*
-            SHA256SUMS
+          artifacts: "libcftext-*.zip,SHA256SUMS"
           body: |
             ## LibCFText Release ${{ github.ref_name }}
 
             Pre-built static library and command-line tool for:
-            - Linux (x86_64)
-            - macOS (x86_64 / arm64)
+            - Linux (x86_64) → `libcftext-ubuntu-latest.zip`
+            - macOS (x86_64 / arm64) → `libcftext-macos-latest.zip`
 
             ### SHA256 Checksums
             See the `SHA256SUMS` file for integrity verification.
