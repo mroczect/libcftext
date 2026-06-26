@@ -1,0 +1,175 @@
+# -------------------------------------------------------------------
+# Standalone CLI release workflow for libcftext.
+#
+# This workflow builds the command-line tool `libftext` for Linux
+# and macOS, then creates a dedicated GitHub Release containing:
+#   - Per-platform binaries (tar.gz)
+#   - A universal installer script (installer.sh)
+#
+# The installer automatically detects OS/arch, downloads the correct
+# binary from the release, and installs it to /usr/local/bin (or a
+# custom directory).
+#
+# Triggered manually or when a tag like "cli-v*" is pushed.
+# -------------------------------------------------------------------
+name: CLI Release
+
+on:
+  workflow_dispatch: # Manual trigger from Actions tab
+  push:
+    tags:
+      - "cli-v*" # e.g. cli-v1.0.5
+
+jobs:
+  # ------------------------------------------------------------------
+  # Build CLI binary for each platform
+  # ------------------------------------------------------------------
+  build-cli:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      BINARY_NAME: libftext
+      ARTIFACT_NAME: libftext-${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build CLI tool
+        run: make # Builds both library and binary; we only need libftext
+
+      - name: Smoke test the binary
+        run: |
+          echo "test" > /tmp/test.txt
+          output=$(./libftext /tmp/test.txt)
+          if [ "$output" != "text" ]; then
+            echo "ERROR: CLI test failed"
+            exit 1
+          fi
+
+      - name: Prepare binary for upload
+        run: |
+          mkdir -p upload
+          cp libftext upload/
+          # Create a tar.gz archive (preserves permissions)
+          tar -czf libftext.tar.gz -C upload libftext
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: libftext.tar.gz
+
+  # ------------------------------------------------------------------
+  # Generate the universal installer script
+  # ------------------------------------------------------------------
+  generate-installer:
+    needs: build-cli
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create installer.sh
+        run: |
+          cat << 'EOF' > installer.sh
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          # ------------------------------------------------------------
+          # libftext CLI installer
+          # This script downloads the correct binary from the GitHub
+          # release and installs it to the specified directory.
+          # ------------------------------------------------------------
+
+          # Default installation directory
+          INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+
+          # Determine OS and architecture
+          OS="$(uname -s)"
+          ARCH="$(uname -m)"
+
+          case "$OS" in
+              Linux)  PLATFORM="ubuntu-latest" ;;
+              Darwin) PLATFORM="macos-latest" ;;
+              *)
+                  echo "Unsupported OS: $OS"
+                  exit 1
+                  ;;
+          esac
+
+          # The release tag is injected by the CI workflow
+          RELEASE_TAG="__RELEASE_TAG__"
+          BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
+
+          # File to download
+          FILENAME="libftext-${PLATFORM}.tar.gz"
+
+          echo "Downloading $FILENAME from $BASE_URL ..."
+          curl -fsSL "${BASE_URL}/${FILENAME}" -o "/tmp/${FILENAME}"
+
+          # Extract
+          echo "Extracting..."
+          tar -xzf "/tmp/${FILENAME}" -C /tmp/
+
+          # Install
+          echo "Installing libftext to ${INSTALL_DIR} ..."
+          sudo install -m 755 /tmp/libftext "${INSTALL_DIR}/libftext"
+
+          # Verify
+          if command -v libftext >/dev/null 2>&1; then
+              echo "libftext installed successfully!"
+              libftext --version 2>&1 || true
+          else
+              echo "Installation failed."
+              exit 1
+          fi
+          EOF
+          chmod +x installer.sh
+
+      - name: Inject release tag into installer
+        if: startsWith(github.ref, 'refs/tags/cli-v')
+        run: |
+          sed -i "s/__RELEASE_TAG__/${GITHUB_REF_NAME}/g" installer.sh
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: installer.sh
+
+  # ------------------------------------------------------------------
+  # Create GitHub Release and attach binaries + installer
+  # ------------------------------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/cli-v') || github.event_name == 'workflow_dispatch'
+    needs: [build-cli, generate-installer]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Display structure
+        run: ls -R
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag: ${{ github.ref_name }}
+          artifacts: "libftext-*/*.tar.gz,installer/installer.sh"
+          body: |
+            ## LibCFText CLI Release ${{ github.ref_name }}
+
+            Pre-built command-line tool for:
+            - Linux (x86_64) → `libftext-ubuntu-latest.tar.gz`
+            - macOS (x86_64 / arm64) → `libftext-macos-latest.tar.gz`
+
+            ### Quick install
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/installer.sh | bash
+            ```
+            Or download the script and run it manually.
