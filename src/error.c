@@ -12,7 +12,7 @@
  * **not** thread-safe. In a multithreaded application the user must
  * serialize calls to `is_text_file()` and the associated error functions.
  *
- * @version 1.0.2
+ * @version 1.0.3
  */
 
 #include "../include/libcftext.h"

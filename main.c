@@ -12,7 +12,7 @@
  * ./demo <file>
  * @endcode
  *
- * @version 1.0.2
+ * @version 1.0.3
  */
 
 #include <stdio.h>

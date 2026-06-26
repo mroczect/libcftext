@@ -5,8 +5,7 @@
 # On version tags (v*), a release is created with:
 #   - Pre-built static library (libcftext.a)
 #   - Command-line tool (libftext)
-#   - SHA256 checksums for all assets
-#
+#   - A single SHA256SUMS file covering all artifacts
 # -------------------------------------------------------------------
 name: Build, Test, and Release
 
@@ -72,7 +71,7 @@ jobs:
 
       - name: Test version output
         run: |
-          ./libftext 2>&1 | grep -q "Version: 1.0.2" || {
+          ./libftext 2>&1 | grep -q "Version: 1.0.3" || {
             echo "ERROR: Version string not found in output"
             exit 1
           }
@@ -111,19 +110,20 @@ jobs:
           echo "Downloaded artifacts:"
           ls -R
 
-      - name: Generate SHA256 checksums
+      - name: Generate combined SHA256 checksums
         run: |
+          echo "Generating SHA256 checksums for all release assets..."
+          rm -f SHA256SUMS
           for dir in libcftext-ubuntu-latest libcftext-macos-latest; do
             if [ -d "$dir" ]; then
-              echo "Generating checksums for $dir..."
-              cd "$dir"
-              sha256sum * > SHA256SUMS
-              cat SHA256SUMS
-              cd ..
+              # Append checksums of files inside the directory to the combined file
+              (cd "$dir" && sha256sum * >> ../SHA256SUMS)
             else
               echo "WARNING: $dir not found, skipping."
             fi
           done
+          echo "Checksums generated:"
+          cat SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -133,6 +133,7 @@ jobs:
           files: |
             libcftext-ubuntu-latest/*
             libcftext-macos-latest/*
+            SHA256SUMS
           body: |
             ## LibCFText Release ${{ github.ref_name }}
 
@@ -141,4 +142,4 @@ jobs:
             - macOS (x86_64 / arm64)
 
             ### SHA256 Checksums
-            See `SHA256SUMS` inside each platform folder.
+            See the `SHA256SUMS` file for integrity verification.

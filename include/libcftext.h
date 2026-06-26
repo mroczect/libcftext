@@ -9,7 +9,7 @@
  * @note This library is written in C but fully compatible with C++ through
  *       the use of `extern "C"` linkage.
  *
- * @version 1.0.2
+ * @version 1.0.3
  */
 
 #ifndef LIBCFTEXT_H
@@ -54,7 +54,7 @@ extern "C" {
  * Can be printed or logged to identify the library version at runtime.
  * Format: `"MAJOR.MINOR.PATCH"`.
  */
-#define LIBCFTEXT_VERSION "1.0.2"
+#define LIBCFTEXT_VERSION "1.0.3"
 
 /*===========================================================================*/
 /* ERROR CODE MACROS                                                         */
@@ -194,7 +194,7 @@ const char *libcftext_strerror(int err);
  * This string is useful for display in `--version` output or for logging.
  * The format is the same as the @ref LIBCFTEXT_VERSION macro.
  *
- * @return A pointer to a constant string, e.g. `"1.0.2"`.
+ * @return A pointer to a constant string, e.g. `"1.0.3"`.
  *
  * @see LIBCFTEXT_VERSION
  *
